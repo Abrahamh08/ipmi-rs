@@ -1,3 +1,5 @@
+pub mod fru;
+
 pub mod sel;
 
 use core::num::NonZeroU16;
