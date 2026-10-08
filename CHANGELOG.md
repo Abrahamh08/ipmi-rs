@@ -7,6 +7,7 @@
 * BREAKING: `LanConfigParameterRequest` and `LanConfigParameterData` borrow their `Raw` payload (`&[u8]`) and are available without `alloc`. `LanConfigParameter::parse` no longer requires `alloc`; add `LanConfigParameterRequest::encode` to serialize into a caller-provided buffer.
 * Add allocation-free `Unit::with_value`/`UnitValue`, `Unit::display_str` and `Value::as_display`, and export `storage::sdr::IsPlural`.
 * Add `GetBmcGlobalEnables` to read BMC-wide message and event enables.
+* Add FRU inventory commands with caller-selected, fixed-capacity Read FRU Data responses.
 
 # [0.5.0](https://github.com/datdenkikniet/ipmi-rs/tree/v0.5.0)
 
