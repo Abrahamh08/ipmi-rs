@@ -4,6 +4,7 @@
 
 * BREAKING: Add `no_std` support and allocation-free command encoding through a new `EncodeIpmiCommand` supertrait.
 * Add `GetBmcGlobalEnables` to read BMC-wide message and event enables.
+* Add FRU inventory commands with caller-selected, fixed-capacity Read FRU Data responses.
 
 # [0.5.0](https://github.com/datdenkikniet/ipmi-rs/tree/v0.5.0)
 
