@@ -5,7 +5,9 @@
 //! defined in the IPMI spec, and primitives for interacting with an IPMI connection.
 //!
 //! Disable default features for a `no_std`, allocation-free build. Commands can
-//! encode into caller-provided buffers through [`connection::EncodeIpmiCommand`].
+//! encode into caller-provided buffers through [`connection::EncodeIpmiCommand`], and a transport
+//! can exchange them for borrowed responses through [`connection::IpmiExchange`] or
+//! [`connection::AsyncIpmiExchange`].
 
 #[cfg(feature = "alloc")]
 extern crate alloc;
