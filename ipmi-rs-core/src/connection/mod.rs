@@ -11,6 +11,11 @@ pub use completion_code::CompletionErrorCode;
 mod netfn;
 pub use netfn::NetFn;
 
+mod exchange;
+pub use exchange::{
+    parse_response, AsyncIpmiExchange, ExchangeError, IpmiExchange, IpmiResponseView, ResponseError,
+};
+
 #[cfg(feature = "alloc")]
 mod request;
 #[cfg(feature = "alloc")]
@@ -167,6 +172,9 @@ impl From<LogicalUnit> for u8 {
 pub struct NotEnoughData;
 
 /// A trait describing operations that can be performed on an IPMI connection.
+///
+/// It owns its requests and responses, so it needs `alloc`. For allocation-free exchanges, see [`IpmiExchange`] and
+/// [`AsyncIpmiExchange`].
 #[cfg(feature = "alloc")]
 pub trait IpmiConnection {
     /// The type of error the can occur when sending a [`Request`].
@@ -230,6 +238,15 @@ impl core::fmt::Display for EncodeError {
     }
 }
 
+/// An [`EncodeIpmiCommand`] whose request data always has the same length.
+///
+/// Implementors MUST return [`Self::REQUEST_DATA_LEN`] from
+/// [`EncodeIpmiCommand::request_data_len`].
+pub trait ConstantRequestDataLen: EncodeIpmiCommand {
+    /// Exact number of request-data bytes every instance encodes.
+    const REQUEST_DATA_LEN: usize;
+}
+
 /// An IPMI command that can encode its request without allocating.
 pub trait EncodeIpmiCommand {
     /// Network function for this command.
@@ -237,13 +254,11 @@ pub trait EncodeIpmiCommand {
     /// Command byte within the network function.
     const CMD: u8;
 
-    /// Default request-data length; variable-length commands override [`Self::request_data_len`].
-    const REQUEST_DATA_LEN: usize = 0;
-
     /// Number of request-data bytes this command encodes.
-    fn request_data_len(&self) -> usize {
-        Self::REQUEST_DATA_LEN
-    }
+    ///
+    /// Commands with a fixed length SHOULD implement [`ConstantRequestDataLen`] and
+    /// return [`ConstantRequestDataLen::REQUEST_DATA_LEN`] from here.
+    fn request_data_len(&self) -> usize;
 
     /// Write request data into a buffer of exactly [`Self::request_data_len`] bytes.
     fn write_request_data(&self, data: &mut [u8]);
@@ -370,6 +385,9 @@ pub trait IpmiCommand: EncodeIpmiCommand {
     fn parse_success_response(data: &[u8]) -> Result<Self::Output, Self::Error>;
 
     /// Get the intended target [`Address`] and [`Channel`] for this command.
+    ///
+    /// This is an IPMI-level address and channel. [`IpmiExchange`] and [`AsyncIpmiExchange`] do not read it; their
+    /// callers pass the destination in the form the transport uses.
     fn target(&self) -> Option<(Address, Channel)> {
         None
     }
