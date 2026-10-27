@@ -3,6 +3,7 @@
 ## `ipmi-rs-core`
 
 * BREAKING: Add `no_std` support and allocation-free command encoding through a new `EncodeIpmiCommand` supertrait.
+* Add `IpmiExchange` and `AsyncIpmiExchange`, which exchange an `EncodedRequest` for a response that can borrow from the transport, plus `send_recv` and `parse_response` to turn it into a command's output without allocating. `IpmiResponseView` is implemented for `Response` with `alloc`.
 
 # [0.5.0](https://github.com/datdenkikniet/ipmi-rs/tree/v0.5.0)
 

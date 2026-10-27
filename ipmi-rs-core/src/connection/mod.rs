@@ -11,6 +11,11 @@ pub use completion_code::CompletionErrorCode;
 mod netfn;
 pub use netfn::NetFn;
 
+mod exchange;
+pub use exchange::{
+    parse_response, AsyncIpmiExchange, ExchangeError, IpmiExchange, IpmiResponseView, ResponseError,
+};
+
 #[cfg(feature = "alloc")]
 mod request;
 #[cfg(feature = "alloc")]
@@ -167,6 +172,9 @@ impl From<LogicalUnit> for u8 {
 pub struct NotEnoughData;
 
 /// A trait describing operations that can be performed on an IPMI connection.
+///
+/// It owns its requests and responses, so it needs `alloc`. For allocation-free exchanges, see [`IpmiExchange`] and
+/// [`AsyncIpmiExchange`].
 #[cfg(feature = "alloc")]
 pub trait IpmiConnection {
     /// The type of error the can occur when sending a [`Request`].
@@ -377,6 +385,9 @@ pub trait IpmiCommand: EncodeIpmiCommand {
     fn parse_success_response(data: &[u8]) -> Result<Self::Output, Self::Error>;
 
     /// Get the intended target [`Address`] and [`Channel`] for this command.
+    ///
+    /// This is an IPMI-level address and channel. [`IpmiExchange`] and [`AsyncIpmiExchange`] do not read it; their
+    /// callers pass the destination in the form the transport uses.
     fn target(&self) -> Option<(Address, Channel)> {
         None
     }
