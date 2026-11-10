@@ -6,10 +6,10 @@ pub use get_sdr::GetDeviceSdr;
 #[cfg(feature = "alloc")]
 pub use get_sdr::RecordInfo as SdrRecordInfo;
 
-#[cfg(feature = "alloc")]
 pub mod record;
+pub use record::ParseError as RecordParseError;
 #[cfg(feature = "alloc")]
-pub use record::{ParseError as RecordParseError, Record};
+pub use record::Record;
 
 mod get_info;
 #[cfg(feature = "alloc")]
@@ -49,7 +49,7 @@ mod event_data;
 pub use event_data::{EventData, EventData2Type, EventData3Type};
 
 mod units;
-pub use units::Unit;
+pub use units::{IsPlural, Unit, UnitValue};
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct RecordId(u16);

@@ -2,8 +2,6 @@
 //! IPMI-connection related data.
 
 mod completion_code;
-#[cfg(feature = "alloc")]
-use alloc::vec::Vec;
 use core::num::NonZeroU8;
 
 pub use completion_code::CompletionErrorCode;
@@ -14,12 +12,9 @@ pub use netfn::NetFn;
 #[cfg(feature = "alloc")]
 mod request;
 #[cfg(feature = "alloc")]
-pub use request::{Request, RequestTargetAddress};
-
-#[cfg(feature = "alloc")]
 mod response;
 #[cfg(feature = "alloc")]
-pub use response::Response;
+pub use owned::{IpmiConnection, Message, Request, Response};
 
 /// The address of an IPMI module or sensor.
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -166,24 +161,22 @@ impl From<LogicalUnit> for u8 {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct NotEnoughData;
 
-/// A trait describing operations that can be performed on an IPMI connection.
-#[cfg(feature = "alloc")]
-pub trait IpmiConnection {
-    /// The type of error the can occur when sending a [`Request`].
-    type SendError: core::fmt::Debug;
-    /// The type of error that can occur when receiving a [`Response`].
-    type RecvError: core::fmt::Debug;
-    /// The type of error the can occur when sending a [`Request`] or receiving a [`Response`].
-    type Error: core::fmt::Debug + From<Self::SendError> + From<Self::RecvError>;
+/// The target address of a request.
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum RequestTargetAddress {
+    /// A logical unit on the BMC (Board Management Controller).
+    Bmc(LogicalUnit),
+    /// An address on the BMC or IPMB.
+    BmcOrIpmb(Address, Channel, LogicalUnit),
+}
 
-    /// Send `request` to the remote end of this connection.
-    fn send(&mut self, request: &mut Request) -> Result<(), Self::SendError>;
-
-    /// Receive a response from the remote end of this connection.
-    fn recv(&mut self) -> Result<Response, Self::RecvError>;
-
-    /// Send `request` to and receive a response from the remote end of this connection.
-    fn send_recv(&mut self, request: &mut Request) -> Result<Response, Self::Error>;
+impl RequestTargetAddress {
+    /// Get the logical unit for the target address.
+    pub fn lun(&self) -> LogicalUnit {
+        match self {
+            RequestTargetAddress::Bmc(lun) | RequestTargetAddress::BmcOrIpmb(_, _, lun) => *lun,
+        }
+    }
 }
 
 /// An encoded IPMI request that borrows its command data from caller-provided storage.
@@ -272,77 +265,102 @@ pub trait EncodeIpmiCommand {
     }
 }
 
-/// The wire representation of an IPMI message.
 #[cfg(feature = "alloc")]
-#[derive(Clone, Debug, PartialEq)]
-pub struct Message {
-    netfn: u8,
-    cmd: u8,
-    data: Vec<u8>,
-}
+mod owned {
+    use alloc::vec::Vec;
 
-#[cfg(feature = "alloc")]
-impl Message {
-    /// Create a new request message with the provided `netfn`, `cmd` and `data`.
-    pub fn new_request(netfn: NetFn, cmd: u8, data: Vec<u8>) -> Self {
-        Self {
-            netfn: netfn.request_value(),
-            cmd,
-            data,
+    pub use super::request::Request;
+    pub use super::response::Response;
+    use super::{EncodeIpmiCommand, NetFn};
+
+    /// A trait describing operations that can be performed on an IPMI connection.
+    pub trait IpmiConnection {
+        /// The type of error the can occur when sending a [`Request`].
+        type SendError: core::fmt::Debug;
+        /// The type of error that can occur when receiving a [`Response`].
+        type RecvError: core::fmt::Debug;
+        /// The type of error the can occur when sending a [`Request`] or receiving a [`Response`].
+        type Error: core::fmt::Debug + From<Self::SendError> + From<Self::RecvError>;
+
+        /// Send `request` to the remote end of this connection.
+        fn send(&mut self, request: &mut Request) -> Result<(), Self::SendError>;
+
+        /// Receive a response from the remote end of this connection.
+        fn recv(&mut self) -> Result<Response, Self::RecvError>;
+
+        /// Send `request` to and receive a response from the remote end of this connection.
+        fn send_recv(&mut self, request: &mut Request) -> Result<Response, Self::Error>;
+    }
+
+    /// The wire representation of an IPMI message.
+    #[derive(Clone, Debug, PartialEq)]
+    pub struct Message {
+        pub(super) netfn: u8,
+        pub(super) cmd: u8,
+        pub(super) data: Vec<u8>,
+    }
+
+    impl Message {
+        /// Create a new request message with the provided `netfn`, `cmd` and `data`.
+        pub fn new_request(netfn: NetFn, cmd: u8, data: Vec<u8>) -> Self {
+            Self {
+                netfn: netfn.request_value(),
+                cmd,
+                data,
+            }
+        }
+
+        /// Create a new response message with the provided `netfn`, `cmd` and `data`.
+        pub fn new_response(netfn: NetFn, cmd: u8, data: Vec<u8>) -> Self {
+            Self {
+                netfn: netfn.response_value(),
+                cmd,
+                data,
+            }
+        }
+
+        /// Create a new message with the provided raw `netfn`, `cmd` and `data`.
+        pub fn new_raw(netfn: u8, cmd: u8, data: Vec<u8>) -> Self {
+            Self { netfn, cmd, data }
+        }
+
+        /// Create an owned request message from an allocation-free command encoder.
+        pub fn from_command<C: EncodeIpmiCommand>(command: &C) -> Self {
+            let mut data = alloc::vec![0; command.request_data_len()];
+            command.write_request_data(&mut data);
+            Self::new_request(C::NETFN, C::CMD, data)
+        }
+
+        /// Get the netfn of the message.
+        pub fn netfn(&self) -> NetFn {
+            NetFn::from(self.netfn)
+        }
+
+        /// Get the raw netfn value for the message.
+        pub fn netfn_raw(&self) -> u8 {
+            self.netfn
+        }
+
+        /// Get the command value for this message.
+        pub fn cmd(&self) -> u8 {
+            self.cmd
+        }
+
+        /// Get a reference to the data for this message.
+        pub fn data(&self) -> &[u8] {
+            &self.data
+        }
+
+        /// Get a mutable reference to the data for this message.
+        pub fn data_mut(&mut self) -> &mut [u8] {
+            &mut self.data
         }
     }
 
-    /// Create a new response message with the provided `netfn`, `cmd` and `data`.
-    pub fn new_response(netfn: NetFn, cmd: u8, data: Vec<u8>) -> Self {
-        Self {
-            netfn: netfn.response_value(),
-            cmd,
-            data,
+    impl<C: EncodeIpmiCommand> From<C> for Message {
+        fn from(command: C) -> Self {
+            Self::from_command(&command)
         }
-    }
-
-    /// Create a new message with the provided raw `netfn`, `cmd` and `data`.
-    pub fn new_raw(netfn: u8, cmd: u8, data: Vec<u8>) -> Self {
-        Self { netfn, cmd, data }
-    }
-
-    /// Create an owned request message from an allocation-free command encoder.
-    pub fn from_command<C: EncodeIpmiCommand>(command: &C) -> Self {
-        let mut data = alloc::vec![0; command.request_data_len()];
-        command.write_request_data(&mut data);
-        Self::new_request(C::NETFN, C::CMD, data)
-    }
-
-    /// Get the netfn of the message.
-    pub fn netfn(&self) -> NetFn {
-        NetFn::from(self.netfn)
-    }
-
-    /// Get the raw netfn value for the message.
-    pub fn netfn_raw(&self) -> u8 {
-        self.netfn
-    }
-
-    /// Get the command value for this message.
-    pub fn cmd(&self) -> u8 {
-        self.cmd
-    }
-
-    /// Get a reference to the data for this message.
-    pub fn data(&self) -> &[u8] {
-        &self.data
-    }
-
-    /// Get a mutable reference to the data for this message.
-    pub fn data_mut(&mut self) -> &mut [u8] {
-        &mut self.data
-    }
-}
-
-#[cfg(feature = "alloc")]
-impl<C: EncodeIpmiCommand> From<C> for Message {
-    fn from(command: C) -> Self {
-        Self::from_command(&command)
     }
 }
 

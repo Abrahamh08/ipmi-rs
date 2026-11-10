@@ -1,7 +1,6 @@
 #[cfg(feature = "alloc")]
-use alloc::{format, string::String};
+use alloc::string::{String, ToString};
 
-#[cfg(feature = "alloc")]
 pub trait IsPlural: PartialEq {
     fn is_singular(&self) -> bool;
     fn is_plural(&self) -> bool {
@@ -9,7 +8,6 @@ pub trait IsPlural: PartialEq {
     }
 }
 
-#[cfg(feature = "alloc")]
 macro_rules ! impl_is_singular {
     ($($ty:ty: [$pos:literal$(, $neg:literal)?]),*) => {
         $(
@@ -32,7 +30,6 @@ macro_rules ! impl_is_singular {
     }
 }
 
-#[cfg(feature = "alloc")]
 impl_is_singular!(
     u8: [1],
     u16: [1],
@@ -48,6 +45,26 @@ impl_is_singular!(
     f64: [1.0, -1.0]
 );
 
+/// A value paired with its [`Unit`], formatted as e.g. `32 °C` or `1 Degree Celsius`.
+///
+/// Created by [`Unit::with_value`].
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct UnitValue<T> {
+    unit: Unit,
+    short: bool,
+    value: T,
+}
+
+impl<T> core::fmt::Display for UnitValue<T>
+where
+    T: IsPlural + core::fmt::Display,
+{
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let unit = self.unit.display_str(self.short, self.value.is_plural());
+        write!(formatter, "{:.2} {}", self.value, unit)
+    }
+}
+
 macro_rules ! unit {
     {
         $($name:ident = [$value:literal, $short:expr, $singular:literal, $plural:literal],)*
@@ -60,7 +77,6 @@ macro_rules ! unit {
         }
 
         impl Unit {
-            #[cfg(feature = "alloc")]
             fn short_display(&self) -> Option<&str> {
                 match self {
                     $(Self::$name => $short,)*
@@ -68,7 +84,6 @@ macro_rules ! unit {
                 }
             }
 
-            #[cfg(feature = "alloc")]
             fn plural_display(&self) -> &str {
                 match self {
                     $(Self::$name => $plural,)*
@@ -76,7 +91,6 @@ macro_rules ! unit {
                 }
             }
 
-            #[cfg(feature = "alloc")]
             fn singular_display(&self) -> &str {
                 match self {
                     $(Self::$name => $singular,)*
@@ -84,8 +98,10 @@ macro_rules ! unit {
                 }
             }
 
-            #[cfg(feature = "alloc")]
-            fn display_str(&self, short: bool, plural: bool) -> &str
+            /// Get the name of this unit.
+            ///
+            /// If `short` is set, the abbreviated name is returned when one exists.
+            pub fn display_str(&self, short: bool, plural: bool) -> &str
             {
                 let short_value = if short {
                     self.short_display()
@@ -104,11 +120,21 @@ macro_rules ! unit {
                 }
             }
 
+            /// Pair this unit with `value` for formatting.
+            ///
+            /// The returned [`UnitValue`] implements [`core::fmt::Display`] without
+            /// allocating, so it can be used directly with `write!` and friends.
+            pub fn with_value<T>(&self, short: bool, value: T) -> UnitValue<T>
+                where T: IsPlural + core::fmt::Display,
+            {
+                UnitValue { unit: *self, short, value }
+            }
+
             #[cfg(feature = "alloc")]
             pub fn display<T>(&self, short: bool, value: T) -> String
                 where T: IsPlural + core::fmt::Display,
             {
-                format!("{:.2} {}", value, self.display_str(short, value.is_plural()))
+                self.with_value(short, value).to_string()
             }
         }
 

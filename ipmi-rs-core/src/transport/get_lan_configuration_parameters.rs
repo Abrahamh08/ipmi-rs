@@ -144,9 +144,10 @@ impl LanConfigParameter {
         }
     }
 
-    #[cfg(feature = "alloc")]
     /// Parse known LAN configuration parameter data.
-    pub fn parse(&self, data: &[u8]) -> Result<LanConfigParameterData, NotEnoughData> {
+    ///
+    /// Unknown parameters are returned as [`LanConfigParameterData::Raw`], borrowing `data`.
+    pub fn parse<'a>(&self, data: &'a [u8]) -> Result<LanConfigParameterData<'a>, NotEnoughData> {
         use LanConfigParameterData::*;
 
         if data.is_empty() {
@@ -192,7 +193,7 @@ impl LanConfigParameter {
             LanConfigParameter::Ipv6DynamicAddress => {
                 Ipv6DynamicAddress(self::Ipv6DynamicAddress::from_slice(data)?)
             }
-            _ => Raw(data.to_vec()),
+            _ => Raw(data),
         };
 
         Ok(value)
@@ -213,15 +214,14 @@ impl LanConfigParameterResponse {
     pub fn parse(
         &self,
         parameter: LanConfigParameter,
-    ) -> Result<LanConfigParameterData, NotEnoughData> {
+    ) -> Result<LanConfigParameterData<'_>, NotEnoughData> {
         parameter.parse(&self.data)
     }
 }
 
-#[cfg(feature = "alloc")]
 /// LAN configuration parameter data variants.
-#[derive(Clone, Debug, PartialEq)]
-pub enum LanConfigParameterData {
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum LanConfigParameterData<'a> {
     None,
     IpAddress(Ipv4Address),
     IpAddressSource(IpAddressSource),
@@ -239,7 +239,7 @@ pub enum LanConfigParameterData {
     Ipv6Status(Ipv6Status),
     Ipv6StaticAddresses(Ipv6StaticAddress),
     Ipv6DynamicAddress(Ipv6DynamicAddress),
-    Raw(Vec<u8>),
+    Raw(&'a [u8]),
 }
 
 /// IPv4 address representation.
